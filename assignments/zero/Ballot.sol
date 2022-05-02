@@ -5,6 +5,7 @@ pragma solidity >=0.7.0 <0.9.0;
 /** 
  * @title Ballot
  * @dev Implements voting process along with vote delegation
+ * @dev edited from original by Kenny Betz, ZKU assignment ZERO
  */
 contract Ballot {
    
@@ -18,7 +19,9 @@ contract Ballot {
     struct Proposal {
         // If you can limit the length to a certain number of bytes, 
         // always use one of bytes1 to bytes32 because they are much cheaper
-        bytes32 name;   // short name (up to 32 bytes)
+
+        // edited: bytes32 to bytes1
+        bytes1 name;   // short name (up to 32 bytes)
         uint voteCount; // number of accumulated votes
     }
 
@@ -28,11 +31,20 @@ contract Ballot {
 
     Proposal[] public proposals;
 
+    // addition: returns start time of voting
+    
+    uint256 public startTime;
+
+    // addition: returns deployment time of contract
+    
+    uint256 public deploymentTime = block.timestamp;
+
+
     /** 
      * @dev Create a new ballot to choose one of 'proposalNames'.
      * @param proposalNames names of proposals
      */
-    constructor(bytes32[] memory proposalNames) {
+    constructor(bytes1[] memory proposalNames) {
         chairperson = msg.sender;
         voters[chairperson].weight = 1;
 
@@ -45,6 +57,26 @@ contract Ballot {
                 voteCount: 0
             }));
         }
+    }
+
+    // addition: voting after 5 minutes from start prohibited
+
+    modifier voteEnded() {
+        require(startTime == 0 || startTime + 5 minutes >= block.timestamp,
+        "Vote has ended"    
+        );
+        _;
+    }
+
+    // addition: winner revealed only after vote ends
+
+    modifier revealWinner() {
+        require(startTime != 0, "Vote has not started");
+       // require(block.timestamp >= startTime + 5 minutes);
+        require(startTime + 5 minutes <= block.timestamp,
+        "Still Voting"
+        );
+        _;
     }
     
     /** 
@@ -97,12 +129,21 @@ contract Ballot {
      * @dev Give your vote (including votes delegated to you) to proposal 'proposals[proposal].name'.
      * @param proposal index of proposal in the proposals array
      */
-    function vote(uint proposal) public {
+    function vote(uint proposal) public voteEnded {
         Voter storage sender = voters[msg.sender];
         require(sender.weight != 0, "Has no right to vote");
         require(!sender.voted, "Already voted.");
         sender.voted = true;
+
+        // addition: startTime initiated conditionally after 1st vote on proposal
+        // cannot be set again after initialization
+        if (startTime == 0) {
+            startTime = block.timestamp;
+            sender.vote = proposal;
+        }
+        else {
         sender.vote = proposal;
+        }
 
         // If 'proposal' is out of the range of the array,
         // this will throw automatically and revert all
@@ -114,7 +155,7 @@ contract Ballot {
      * @dev Computes the winning proposal taking all previous votes into account.
      * @return winningProposal_ index of winning proposal in the proposals array
      */
-    function winningProposal() public view
+    function winningProposal() public view revealWinner
             returns (uint winningProposal_)
     {
         uint winningVoteCount = 0;
@@ -130,8 +171,8 @@ contract Ballot {
      * @dev Calls winningProposal() function to get the index of the winner contained in the proposals array and then
      * @return winnerName_ the name of the winner
      */
-    function winnerName() public view
-            returns (bytes32 winnerName_)
+    function winnerName() public view revealWinner
+            returns (bytes1 winnerName_)
     {
         winnerName_ = proposals[winningProposal()].name;
     }
